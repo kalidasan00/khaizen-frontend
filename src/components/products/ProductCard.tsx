@@ -1,15 +1,16 @@
 'use client'
 import Link from 'next/link'
-import Image from 'next/image'
 import { ShoppingCart, MessageCircle } from 'lucide-react'
 import { useQuote } from '@/context/QuoteContext'
 
 interface Product {
   id: number
   name: string
-  price: number
-  image: string
+  price: number | string
+  image?: string
+  main_image?: string
   category: string
+  category_name?: string
 }
 
 interface ProductCardProps {
@@ -19,14 +20,25 @@ interface ProductCardProps {
 export default function ProductCard({ product }: ProductCardProps) {
   const { addToQuote } = useQuote()
 
+  // Convert price to number
+  const price = typeof product.price === 'string' ? parseFloat(product.price) : product.price
+  const imageUrl = product.image || product.main_image || '/placeholder.png'
+  const categoryName = product.category_name || product.category
+
   const handleWhatsApp = () => {
-    const message = `Hi, I'm interested in:\n\n*${product.name}*\nPrice: AED ${product.price.toFixed(2)}\nCategory: ${product.category}\n\nCould you provide more details?`
+    const message = `Hi, I'm interested in:\n\n*${product.name}*\nPrice: AED ${price.toFixed(2)}\nCategory: ${categoryName}\n\nCould you provide more details?`
     const whatsappUrl = `https://wa.me/971445222261?text=${encodeURIComponent(message)}`
     window.open(whatsappUrl, '_blank')
   }
 
   const handleAddToQuote = () => {
-    addToQuote(product)
+    addToQuote({
+      id: product.id,
+      name: product.name,
+      price: price,
+      image: imageUrl,
+      category: categoryName,
+    })
     alert('Added to quote list!')
   }
 
@@ -34,15 +46,20 @@ export default function ProductCard({ product }: ProductCardProps) {
     <div className="bg-white rounded-lg shadow-md overflow-hidden group hover:shadow-xl transition">
       <Link href={`/products/${product.id}`}>
         <div className="relative h-40 sm:h-48 md:h-56 lg:h-64 overflow-hidden bg-gray-100">
-          <Image
-            src={product.image}
-            alt={product.name}
-            fill
-            className="object-cover group-hover:scale-110 transition duration-300"
-          />
+          {imageUrl && imageUrl !== '/placeholder.png' ? (
+            <img
+              src={imageUrl}
+              alt={product.name}
+              className="w-full h-full object-cover group-hover:scale-110 transition duration-300"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-gray-200">
+              <span className="text-gray-400 text-sm">No Image</span>
+            </div>
+          )}
           <div className="absolute top-2 right-2">
             <span className="bg-secondary text-white px-2 py-1 text-[10px] sm:text-xs rounded">
-              {product.category}
+              {categoryName}
             </span>
           </div>
         </div>
@@ -55,7 +72,7 @@ export default function ProductCard({ product }: ProductCardProps) {
           </h3>
         </Link>
         <div className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-primary mb-2 sm:mb-3 md:mb-4">
-          AED {product.price.toFixed(2)}
+          AED {price.toFixed(2)}
         </div>
 
         {/* Desktop Buttons - Side by Side */}

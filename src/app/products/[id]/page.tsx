@@ -1,27 +1,47 @@
+// Frontend: src/app/products/[id]/page.tsx
+
 'use client'
 import { use, useState, useEffect } from 'react'
-import Image from 'next/image'
 import Link from 'next/link'
-import { ShoppingCart, MessageCircle, Heart, Share2, Star, Truck, Shield, RefreshCcw, ArrowLeft, ChevronDown, ChevronUp } from 'lucide-react'
+import { ShoppingCart, MessageCircle, Heart, Share2, Star, Truck, Shield, RefreshCcw, ArrowLeft } from 'lucide-react'
 import { useQuote } from '@/context/QuoteContext'
 import { ProductDetailSkeleton } from '@/components/common/LoadingSkeleton'
-import { getProductById, Product } from '@/data/products'
+import { getProductById } from '@/data/products'
+import { api } from '@/lib/api'
 
 export default function ProductDetail({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params)
   const [loading, setLoading] = useState(true)
-  const [product, setProduct] = useState<Product | null>(null)
+  const [product, setProduct] = useState<any>(null)
   const [activeTab, setActiveTab] = useState('features')
   const [quantity, setQuantity] = useState(1)
   const { addToQuote } = useQuote()
 
   useEffect(() => {
-    setTimeout(() => {
-      const foundProduct = getProductById(parseInt(resolvedParams.id))
-      setProduct(foundProduct || null)
-      setLoading(false)
-    }, 1000)
+    fetchProduct()
   }, [resolvedParams.id])
+
+  const fetchProduct = async () => {
+    try {
+      setLoading(true)
+      
+      // Check if it's a static product (ID starts with 'static-')
+      if (resolvedParams.id.startsWith('static-')) {
+        const numericId = parseInt(resolvedParams.id.replace('static-', ''))
+        const staticProduct = getProductById(numericId)
+        setProduct(staticProduct || null)
+      } else {
+        // Fetch from Django API
+        const apiProduct = await api.getProduct(resolvedParams.id)
+        setProduct(apiProduct)
+      }
+    } catch (error) {
+      console.error('Error fetching product:', error)
+      setProduct(null)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   if (loading) {
     return <ProductDetailSkeleton />
@@ -41,26 +61,35 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
     )
   }
 
+  // Normalize product data (handle both API and static products)
+  const price = typeof product.price === 'string' ? parseFloat(product.price) : product.price
+  const originalPrice = product.original_price || product.originalPrice
+  const normalizedOriginalPrice = originalPrice ? (typeof originalPrice === 'string' ? parseFloat(originalPrice) : originalPrice) : null
+  const imageUrl = product.main_image || product.image
+  const categoryName = product.category_name || product.category
+  const stockCount = product.stock_count || product.stockCount || 0
+  const inStock = product.in_stock !== undefined ? product.in_stock : product.inStock
+
   const handleAddToQuote = () => {
     addToQuote({
       id: product.id,
       name: product.name,
-      price: product.price,
-      image: product.image,
-      category: product.category,
+      price: price,
+      image: imageUrl,
+      category: categoryName,
       quantity: quantity,
     })
     alert(`Added ${quantity} item(s) to quote!`)
   }
 
   const handleWhatsApp = () => {
-    const message = `Hi, I'm interested in:\n\n*${product.name}*\nQuantity: ${quantity}\nPrice: AED ${product.price.toFixed(2)}\nSKU: ${product.sku}\n\nCould you provide more details?`
+    const message = `Hi, I'm interested in:\n\n*${product.name}*\nQuantity: ${quantity}\nPrice: AED ${price.toFixed(2)}\nSKU: ${product.sku}\n\nCould you provide more details?`
     const whatsappUrl = `https://wa.me/971445222261?text=${encodeURIComponent(message)}`
     window.open(whatsappUrl, '_blank')
   }
 
   const incrementQuantity = () => {
-    if (quantity < product.stockCount) {
+    if (quantity < stockCount) {
       setQuantity(quantity + 1)
     }
   }
@@ -80,10 +109,6 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
             <Link href="/" className="hover:text-primary">Home</Link>
             <span>/</span>
             <Link href="/products" className="hover:text-primary">Products</Link>
-            <span>/</span>
-            <Link href={`/products?category=${product.category}`} className="hover:text-primary">
-              {product.category}
-            </Link>
             <span>/</span>
             <span className="text-gray-900 truncate">{product.name}</span>
           </div>
@@ -105,13 +130,17 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
           <div>
             {/* Main Image */}
             <div className="relative h-64 sm:h-80 md:h-96 lg:h-[500px] bg-gray-100 rounded-lg overflow-hidden mb-3 md:mb-4">
-              <Image
-                src={product.image}
-                alt={product.name}
-                fill
-                className="object-cover"
-                priority
-              />
+              {imageUrl ? (
+                <img
+                  src={imageUrl}
+                  alt={product.name}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center">
+                  <span className="text-gray-400">No Image</span>
+                </div>
+              )}
               {product.discount && product.discount > 0 && (
                 <div className="absolute top-2 md:top-4 left-2 md:left-4 bg-red-500 text-white px-2 md:px-3 py-1 rounded-full font-bold text-xs md:text-sm">
                   -{product.discount}%
@@ -122,19 +151,21 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
             {/* Thumbnail Images */}
             {product.images && product.images.length > 0 && (
               <div className="grid grid-cols-4 gap-2 md:gap-4">
-                {product.images.map((img: string, index: number) => (
-                  <div 
-                    key={index} 
-                    className="relative h-16 sm:h-20 md:h-24 bg-gray-100 rounded-lg overflow-hidden cursor-pointer hover:ring-2 hover:ring-primary transition"
-                  >
-                    <Image
-                      src={img}
-                      alt={`${product.name} - Image ${index + 1}`}
-                      fill
-                      className="object-cover"
-                    />
-                  </div>
-                ))}
+                {product.images.map((img: any, index: number) => {
+                  const imgUrl = typeof img === 'string' ? img : img.image
+                  return (
+                    <div 
+                      key={index} 
+                      className="relative h-16 sm:h-20 md:h-24 bg-gray-100 rounded-lg overflow-hidden cursor-pointer hover:ring-2 hover:ring-primary transition"
+                    >
+                      <img
+                        src={imgUrl}
+                        alt={`${product.name} - Image ${index + 1}`}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -174,28 +205,28 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
             <div className="mb-4 md:mb-6">
               <div className="flex items-center gap-3 md:gap-4">
                 <span className="text-2xl sm:text-3xl md:text-4xl font-bold text-primary">
-                  AED {product.price.toFixed(2)}
+                  AED {price.toFixed(2)}
                 </span>
-                {product.originalPrice && (
+                {normalizedOriginalPrice && (
                   <span className="text-lg sm:text-xl md:text-2xl text-gray-400 line-through">
-                    AED {product.originalPrice.toFixed(2)}
+                    AED {normalizedOriginalPrice.toFixed(2)}
                   </span>
                 )}
               </div>
-              {product.originalPrice && (
+              {normalizedOriginalPrice && (
                 <p className="text-xs md:text-sm text-green-600 mt-1">
-                  Save AED {(product.originalPrice - product.price).toFixed(2)}
+                  Save AED {(normalizedOriginalPrice - price).toFixed(2)}
                 </p>
               )}
             </div>
 
             {/* Stock Status */}
-            {product.inStock ? (
+            {inStock ? (
               <div className="flex items-center gap-2 mb-4 md:mb-6">
                 <span className="inline-block bg-green-100 text-green-800 px-2 md:px-3 py-1 rounded-full text-xs md:text-sm font-semibold">
                   In Stock
                 </span>
-                <span className="text-gray-600 text-xs md:text-sm">({product.stockCount} units available)</span>
+                <span className="text-gray-600 text-xs md:text-sm">({stockCount} units available)</span>
               </div>
             ) : (
               <span className="inline-block bg-red-100 text-red-800 px-2 md:px-3 py-1 rounded-full text-xs md:text-sm font-semibold mb-4 md:mb-6">
@@ -224,12 +255,12 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
                     value={quantity}
                     onChange={(e) => {
                       const val = parseInt(e.target.value)
-                      if (val >= 1 && val <= product.stockCount) {
+                      if (val >= 1 && val <= stockCount) {
                         setQuantity(val)
                       }
                     }}
                     min={1}
-                    max={product.stockCount}
+                    max={stockCount}
                     className="w-12 md:w-16 text-center border-x-2 border-gray-300 py-2 focus:outline-none text-sm md:text-base"
                   />
                   <button 
@@ -239,11 +270,11 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
                     +
                   </button>
                 </div>
-                <span className="text-xs md:text-sm text-gray-600">Max: {product.stockCount} units</span>
+                <span className="text-xs md:text-sm text-gray-600">Max: {stockCount} units</span>
               </div>
             </div>
 
-            {/* Action Buttons - Mobile Stacked */}
+            {/* Action Buttons */}
             <div className="flex flex-col md:flex-row gap-2 md:gap-4 mb-6 md:mb-8">
               <button 
                 onClick={handleAddToQuote}
@@ -259,15 +290,9 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
                 <MessageCircle size={20} className="md:w-6 md:h-6" />
                 WhatsApp
               </button>
-              <button className="md:block hidden bg-gray-200 text-gray-700 p-4 rounded-lg hover:bg-gray-300 transition">
-                <Heart size={24} />
-              </button>
-              <button className="md:block hidden bg-gray-200 text-gray-700 p-4 rounded-lg hover:bg-gray-300 transition">
-                <Share2 size={24} />
-              </button>
             </div>
 
-            {/* Features Grid - Responsive */}
+            {/* Features Grid */}
             <div className="grid grid-cols-3 gap-2 md:gap-4 mb-6 md:mb-8 p-3 md:p-6 bg-gray-50 rounded-lg">
               <div className="text-center">
                 <Truck className="mx-auto mb-1 md:mb-2 text-primary" size={24} />
@@ -276,7 +301,9 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
               </div>
               <div className="text-center">
                 <Shield className="mx-auto mb-1 md:mb-2 text-primary" size={24} />
-                <p className="text-[10px] sm:text-xs md:text-sm font-semibold">{product.specifications.Warranty || '1 Year'}</p>
+                <p className="text-[10px] sm:text-xs md:text-sm font-semibold">
+                  {product.specifications?.Warranty || '1 Year'}
+                </p>
                 <p className="text-[8px] sm:text-[10px] md:text-xs text-gray-600">Warranty</p>
               </div>
               <div className="text-center">
@@ -285,31 +312,11 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
                 <p className="text-[8px] sm:text-[10px] md:text-xs text-gray-600">30-day policy</p>
               </div>
             </div>
-
-            {/* Shipping Info - Desktop Only */}
-            <div className="hidden md:block border-t pt-6">
-              <h3 className="font-bold text-lg mb-3">Delivery Information</h3>
-              <ul className="space-y-2 text-gray-700">
-                <li className="flex items-start gap-2">
-                  <span className="text-green-600 mt-1">✓</span>
-                  <span>Free delivery on orders over AED 300</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-green-600 mt-1">✓</span>
-                  <span>Express delivery available (1-2 days) - AED 50</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-green-600 mt-1">✓</span>
-                  <span>Standard delivery: 2-3 business days</span>
-                </li>
-              </ul>
-            </div>
           </div>
         </div>
 
         {/* Product Details Tabs */}
         <div className="mt-6 md:mt-12 bg-white rounded-lg shadow-lg p-4 md:p-8">
-          {/* Tabs Header */}
           <div className="border-b mb-4 md:mb-6 overflow-x-auto">
             <div className="flex gap-4 md:gap-8 min-w-max">
               <button
@@ -349,14 +356,18 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
           {activeTab === 'features' && (
             <div>
               <h3 className="text-lg md:text-2xl font-bold mb-4 md:mb-6">Key Features</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
-                {product.features.map((feature: string, index: number) => (
-                  <div key={index} className="flex items-start gap-2 md:gap-3 p-3 md:p-4 bg-gray-50 rounded-lg">
-                    <span className="text-primary mt-1">✓</span>
-                    <span className="text-gray-700 text-sm md:text-base">{feature}</span>
-                  </div>
-                ))}
-              </div>
+              {product.features && product.features.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
+                  {product.features.map((feature: string, index: number) => (
+                    <div key={index} className="flex items-start gap-2 md:gap-3 p-3 md:p-4 bg-gray-50 rounded-lg">
+                      <span className="text-primary mt-1">✓</span>
+                      <span className="text-gray-700 text-sm md:text-base">{feature}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-gray-500">No features listed</p>
+              )}
             </div>
           )}
 
@@ -364,14 +375,18 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
           {activeTab === 'specifications' && (
             <div>
               <h3 className="text-lg md:text-2xl font-bold mb-4 md:mb-6">Technical Specifications</h3>
-              <div className="space-y-3 md:space-y-4">
-                {Object.entries(product.specifications).map(([key, value]) => (
-                  <div key={key} className="flex justify-between p-3 md:p-4 border-b">
-                    <span className="font-semibold text-gray-700 text-sm md:text-base">{key}:</span>
-                    <span className="text-gray-600 text-sm md:text-base text-right">{value as string}</span>
-                  </div>
-                ))}
-              </div>
+              {product.specifications && Object.keys(product.specifications).length > 0 ? (
+                <div className="space-y-3 md:space-y-4">
+                  {Object.entries(product.specifications).map(([key, value]) => (
+                    <div key={key} className="flex justify-between p-3 md:p-4 border-b">
+                      <span className="font-semibold text-gray-700 text-sm md:text-base">{key}:</span>
+                      <span className="text-gray-600 text-sm md:text-base text-right">{value as string}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-gray-500">No specifications listed</p>
+              )}
             </div>
           )}
 
@@ -381,25 +396,6 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
               <p className="text-gray-500 text-sm md:text-base">Reviews coming soon...</p>
             </div>
           )}
-        </div>
-
-        {/* Delivery Info - Mobile Only */}
-        <div className="md:hidden mt-6 bg-white rounded-lg shadow-lg p-4">
-          <h3 className="font-bold text-base mb-3">Delivery Information</h3>
-          <ul className="space-y-2 text-gray-700 text-sm">
-            <li className="flex items-start gap-2">
-              <span className="text-green-600 mt-1">✓</span>
-              <span>Free delivery on orders over AED 300</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="text-green-600 mt-1">✓</span>
-              <span>Express delivery (1-2 days) - AED 50</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="text-green-600 mt-1">✓</span>
-              <span>Standard delivery: 2-3 business days</span>
-            </li>
-          </ul>
         </div>
       </div>
     </div>
