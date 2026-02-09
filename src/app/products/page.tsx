@@ -1,5 +1,3 @@
-// Frontend: src/app/products/page.tsx
-
 'use client'
 import { useState, useEffect } from 'react'
 import ProductCard from '@/components/products/ProductCard'
@@ -13,7 +11,6 @@ export default function ProductsPage() {
   const [displayProducts, setDisplayProducts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
-  const [priceRange, setPriceRange] = useState(400)
   const [sortBy, setSortBy] = useState('featured')
 
   const categories = [
@@ -24,7 +21,6 @@ export default function ProductsPage() {
     'Office Furniture',
     'Office Machines'
   ]
-  const maxPrice = 400
 
   useEffect(() => {
     fetchAllProducts()
@@ -83,21 +79,13 @@ export default function ProductsPage() {
   const handleApplyFilters = () => {
     let filtered = [...allProducts]
 
-    // Filter by category
+    // Filter by category only (removed price filter)
     if (selectedCategories.length > 0) {
       filtered = filtered.filter((product: any) => {
         const productCategory = product.category_name || product.category
         return selectedCategories.includes(productCategory as string)
       })
     }
-
-    // Filter by price
-    filtered = filtered.filter((product: any) => {
-      const productPrice = typeof product.price === 'string'
-        ? parseFloat(product.price)
-        : product.price
-      return productPrice <= priceRange
-    })
 
     // Sort products
     switch (sortBy) {
@@ -128,7 +116,6 @@ export default function ProductsPage() {
 
   const handleClearFilters = () => {
     setSelectedCategories([])
-    setPriceRange(maxPrice)
     setSortBy('featured')
     setDisplayProducts(allProducts)
   }
@@ -148,10 +135,10 @@ export default function ProductsPage() {
         <ProductFilters
           categories={categories}
           selectedCategories={selectedCategories}
-          priceRange={priceRange}
-          maxPrice={maxPrice}
+          priceRange={0}
+          maxPrice={0}
           onCategoryChange={handleCategoryChange}
-          onPriceChange={setPriceRange}
+          onPriceChange={() => {}}
           onApplyFilters={handleApplyFilters}
           onClearFilters={handleClearFilters}
         />
