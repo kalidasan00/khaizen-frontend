@@ -24,9 +24,9 @@ export default function RentalProducts() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect() => {
-    fetchProducts();
-  }, []);
+  useEffect(() => {
+  fetchProducts();
+}, []);
 
   const fetchProducts = async () => {
     try {
